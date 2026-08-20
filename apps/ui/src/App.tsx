@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import "./App.css";
+import { Setup } from "./Setup";
+import type { ProviderSettings } from "./Setup";
 
 type Role = "user" | "assistant" | "system";
 
@@ -33,6 +35,8 @@ function App() {
 	>("checking");
 	const [error, setError] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
+	const [settings, setSettings] = useState<ProviderSettings | null>(null);
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	const messageEndRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -44,10 +48,21 @@ function App() {
 				if (!healthResponse.ok) throw new Error("Runtime health check failed");
 				if (active) setRuntimeStatus("online");
 
+				const settingsResponse = await fetch("/api/settings");
+				if (!settingsResponse.ok) throw new Error("Could not load settings");
+				const currentSettings =
+					(await settingsResponse.json()) as ProviderSettings;
+				if (!active) return;
+				setSettings(currentSettings);
+				if (!currentSettings.setup_complete) {
+					setSettingsOpen(true);
+					return;
+				}
+
 				const conversationResponse = await fetch("/api/conversations", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ title: "New conversation", provider: "fake" }),
+					body: JSON.stringify({ title: "New conversation", provider: "selected" }),
 				});
 				if (!conversationResponse.ok)
 					throw new Error("Could not start a conversation");
@@ -67,6 +82,21 @@ function App() {
 			active = false;
 		};
 	}, []);
+
+	async function settingsCompleted(nextSettings: ProviderSettings) {
+		setSettings(nextSettings);
+		setSettingsOpen(false);
+		const response = await fetch("/api/conversations", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "New conversation", provider: "selected" }),
+		});
+		if (!response.ok) {
+			setError("The selected provider could not start a conversation");
+			return;
+		}
+		setConversation((await response.json()) as Conversation);
+	}
 
 	useEffect(() => {
 		messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -121,6 +151,13 @@ function App() {
 
 	return (
 		<div className="app-shell">
+			{settings && settingsOpen && (
+				<Setup
+					initial={settings}
+					onComplete={settingsCompleted}
+					onCancel={settings.setup_complete ? () => setSettingsOpen(false) : undefined}
+				/>
+			)}
 			<aside className="identity-panel">
 				<header className="brand">
 					<span className="brand-mark">E</span>
@@ -186,8 +223,13 @@ function App() {
 				</nav>
 
 				<div className="provider-note">
-					<span>Provider</span>
-					<strong>{conversation?.provider ?? "fake"}</strong>
+					<div>
+						<span>Provider</span>
+						<strong>{conversation?.provider ?? settings?.selected_provider ?? "setup"}</strong>
+					</div>
+					<button type="button" onClick={() => setSettingsOpen(true)}>
+						Settings
+					</button>
 				</div>
 			</aside>
 
@@ -198,13 +240,11 @@ function App() {
 						<h1>{conversation?.title ?? "New conversation"}</h1>
 					</div>
 					<button
-						className="icon-button"
+						className="header-settings"
 						type="button"
-						aria-label="Start a new conversation"
-						title="New conversation"
-						disabled
+						onClick={() => setSettingsOpen(true)}
 					>
-						<span aria-hidden="true">+</span>
+						Settings
 					</button>
 				</header>
 
@@ -218,9 +258,8 @@ function App() {
 							<p>Good day.</p>
 							<h2>What shall we attend to?</h2>
 							<p className="welcome-copy">
-								I am running with the deterministic development provider. We can
-								exercise conversation and persistence without contacting an
-								external model.
+								Choose a private model connection, then begin whenever you are
+								ready.
 							</p>
 						</div>
 					)}
@@ -291,7 +330,11 @@ function App() {
 						</button>
 					</form>
 					<p className="privacy-note">
-						Development mode. No external model is contacted.
+						{conversation?.provider === "lmstudio"
+							? "Connected to the configured LM Studio server."
+							: conversation?.provider === "copilot"
+								? "Connected through GitHub Copilot."
+								: "Choose a provider in Settings."}
 					</p>
 				</footer>
 			</main>

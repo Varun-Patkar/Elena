@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 from uuid import UUID
@@ -12,8 +13,15 @@ from elena.contracts import (
     SendMessageRequest,
     TurnResponse,
 )
-from elena.providers import FakeProvider
+from elena.providers import CopilotProvider, LMStudioProvider, ProviderRegistry
 from elena.service import ConversationNotFoundError, ConversationService
+from elena.settings import (
+    ConnectionTestResult,
+    PublicSettings,
+    SaveSettingsRequest,
+    SettingsService,
+    TestProviderRequest,
+)
 from elena.storage import ConversationStore
 
 
@@ -35,15 +43,48 @@ def default_ui_dir() -> Path:
 
 
 def create_app(
-    database_path: Path | None = None, ui_dir: Path | None = None
+    database_path: Path | None = None,
+    ui_dir: Path | None = None,
+    settings_service: SettingsService | None = None,
 ) -> FastAPI:
     path = database_path or default_data_dir() / "elena.db"
-    service = ConversationService(ConversationStore(path), FakeProvider())
+    settings = settings_service or SettingsService(path.parent)
+    providers = ProviderRegistry(settings)
+    service = ConversationService(ConversationStore(path), providers)
     app = FastAPI(title="Elena Runtime", version="0.1.0")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok", "provider": service.provider.name}
+        return {"status": "ok", "provider": providers.selected_name()}
+
+    @app.get("/api/settings", response_model=PublicSettings)
+    async def get_settings() -> PublicSettings:
+        return settings.public()
+
+    @app.post("/api/settings/test", response_model=ConnectionTestResult)
+    async def test_provider(request: TestProviderRequest) -> ConnectionTestResult:
+        if request.provider == "lmstudio":
+            endpoint = request.endpoint or "http://127.0.0.1:1234/v1"
+            token = request.token or settings.secret("lmstudio_token")
+            return await LMStudioProvider.test_connection(endpoint, token)
+        if request.provider == "copilot":
+            token = request.token or settings.secret("github_token")
+            try:
+                return await asyncio.wait_for(
+                    CopilotProvider.test_connection(token, settings.data_dir), timeout=30
+                )
+            except TimeoutError:
+                return ConnectionTestResult(
+                    ok=False, error="GitHub Copilot did not respond within 30 seconds"
+                )
+        raise HTTPException(status_code=400, detail="Unknown provider")
+
+    @app.put("/api/settings", response_model=PublicSettings)
+    async def save_settings(request: SaveSettingsRequest) -> PublicSettings:
+        try:
+            return settings.save(request)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post(
         "/api/conversations",
@@ -51,9 +92,13 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     async def create_conversation(request: CreateConversationRequest) -> Conversation:
-        if request.provider != service.provider.name:
-            raise HTTPException(status_code=400, detail="Provider is unavailable")
-        return service.create_conversation(request.title)
+        provider = (
+            providers.selected_name() if request.provider == "selected" else request.provider
+        )
+        try:
+            return service.create_conversation(request.title, provider)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
     async def get_conversation(conversation_id: UUID) -> Conversation:

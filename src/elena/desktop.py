@@ -1,11 +1,20 @@
+import ctypes
+import ctypes.wintypes
+import subprocess
 import sys
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 from elena.runtime import default_data_dir
 
 RUNTIME_URL = "http://127.0.0.1:8765"
+HOTKEY_ID = 0xE1E
+WM_HOTKEY = 0x0312
+MOD_CONTROL = 0x0002
+VK_F4 = 0x73
+PM_REMOVE = 0x0001
 
 
 def runtime_command() -> tuple[str, list[str]]:
@@ -14,63 +23,59 @@ def runtime_command() -> tuple[str, list[str]]:
 
 def runtime_is_ready(timeout: float = 0.3) -> bool:
     try:
-        with urllib.request.urlopen(
-            f"{RUNTIME_URL}/health", timeout=timeout
-        ) as response:
+        with urllib.request.urlopen(f"{RUNTIME_URL}/health", timeout=timeout) as response:
             return response.status == 200
     except (OSError, urllib.error.URLError):
         return False
 
 
+def cleanup_managed_containers() -> None:
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.elena.managed=true"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=5,
+        )
+        container_ids = result.stdout.split()
+        if container_ids:
+            subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                capture_output=True,
+                check=False,
+                timeout=15,
+            )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def main() -> None:
     try:
-        from PySide6.QtCore import QLockFile, QProcess, QTimer, QUrl
+        from PySide6.QtCore import QLockFile, QProcess, QTimer
         from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
-        from PySide6.QtWebEngineWidgets import QWebEngineView
-        from PySide6.QtWidgets import (
-            QApplication,
-            QMainWindow,
-            QMenu,
-            QMessageBox,
-            QSystemTrayIcon,
-        )
+        from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
     except ImportError as error:
         raise SystemExit(
             "The desktop shell is optional. Install it with: uv sync --extra desktop"
         ) from error
 
-    class ElenaWindow(QMainWindow):
-        def __init__(self) -> None:
-            super().__init__()
-            self.allow_close = False
-            self.setWindowTitle("Elena")
-            self.resize(1180, 780)
-            self.setMinimumSize(820, 600)
-            self.web_view = QWebEngineView(self)
-            self.web_view.setHtml(
-                "<body style='font-family: sans-serif; padding: 40px'>Preparing Elena...</body>"
-            )
-            self.setCentralWidget(self.web_view)
-
-        def closeEvent(self, event: object) -> None:
-            if self.allow_close:
-                super().closeEvent(event)
-                return
-            self.hide()
-            event.ignore()
-
     class DesktopHost:
         def __init__(self, application: QApplication, lock: QLockFile) -> None:
             self.application = application
             self.lock = lock
-            self.window = ElenaWindow()
             self.process = QProcess(application)
             self.process.finished.connect(self._runtime_finished)
             self.health_timer = QTimer(application)
             self.health_timer.setInterval(250)
             self.health_timer.timeout.connect(self._check_runtime)
+            self.hotkey_timer = QTimer(application)
+            self.hotkey_timer.setInterval(100)
+            self.hotkey_timer.timeout.connect(self._check_hotkey)
             self.restart_attempts = 0
             self.stopping = False
+            self.open_when_ready = True
+            self.hotkey_registered = False
             self.tray = QSystemTrayIcon(self._create_icon(), application)
             self.tray.setToolTip("Elena is starting")
             self.tray.activated.connect(self._tray_activated)
@@ -90,20 +95,38 @@ def main() -> None:
         def _create_menu(self) -> QMenu:
             menu = QMenu()
             open_action = QAction("Open Elena", menu)
-            open_action.triggered.connect(self.show)
-            restart_action = QAction("Restart runtime", menu)
-            restart_action.triggered.connect(self.restart_runtime)
-            exit_action = QAction("Exit completely", menu)
-            exit_action.triggered.connect(self.shutdown)
+            open_action.triggered.connect(self.open_browser)
+            close_action = QAction("Close Elena", menu)
+            close_action.triggered.connect(self.shutdown)
             menu.addAction(open_action)
-            menu.addAction(restart_action)
             menu.addSeparator()
-            menu.addAction(exit_action)
+            menu.addAction(close_action)
             return menu
 
         def start(self) -> None:
+            self._register_hotkey()
             self._start_runtime()
-            self.window.show()
+
+        def _register_hotkey(self) -> None:
+            if sys.platform != "win32":
+                return
+            self.hotkey_registered = bool(
+                ctypes.windll.user32.RegisterHotKey(None, HOTKEY_ID, MOD_CONTROL, VK_F4)
+            )
+            if self.hotkey_registered:
+                self.hotkey_timer.start()
+            else:
+                self.tray.showMessage(
+                    "Elena hotkey unavailable",
+                    "Ctrl+F4 is already in use. The tray menu remains available.",
+                )
+
+        def _check_hotkey(self) -> None:
+            message = ctypes.wintypes.MSG()
+            if ctypes.windll.user32.PeekMessageW(
+                ctypes.byref(message), None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE
+            ) and message.wParam == HOTKEY_ID:
+                self.open_browser()
 
         def _start_runtime(self) -> None:
             program, arguments = runtime_command()
@@ -118,8 +141,10 @@ def main() -> None:
                 return
             self.health_timer.stop()
             self.restart_attempts = 0
-            self.tray.setToolTip("Elena is ready")
-            self.window.web_view.setUrl(QUrl(RUNTIME_URL))
+            self.tray.setToolTip("Elena is ready - Ctrl+F4 to open")
+            if self.open_when_ready:
+                self.open_when_ready = False
+                self.open_browser()
 
         def _runtime_finished(self) -> None:
             self.health_timer.stop()
@@ -127,10 +152,9 @@ def main() -> None:
                 return
             if self.restart_attempts >= 3:
                 self.tray.setToolTip("Elena needs attention")
-                QMessageBox.critical(
-                    self.window,
+                self.tray.showMessage(
                     "Elena could not start",
-                    "The runtime stopped repeatedly. Open the runtime logs before trying again.",
+                    "The runtime stopped repeatedly. Close Elena and run setup again.",
                 )
                 return
             delay = 1000 * (2**self.restart_attempts)
@@ -139,35 +163,29 @@ def main() -> None:
 
         def _tray_activated(self, reason: object) -> None:
             if reason == QSystemTrayIcon.ActivationReason.Trigger:
-                self.show()
+                self.open_browser()
 
-        def show(self) -> None:
-            self.window.show()
-            self.window.raise_()
-            self.window.activateWindow()
-
-        def restart_runtime(self) -> None:
-            self.health_timer.stop()
-            if self.process.state() != QProcess.ProcessState.NotRunning:
-                self.process.terminate()
-                if not self.process.waitForFinished(3000):
-                    self.process.kill()
-                    self.process.waitForFinished(1000)
-            self.restart_attempts = 0
-            self._start_runtime()
+        def open_browser(self) -> None:
+            if runtime_is_ready():
+                webbrowser.open_new_tab(RUNTIME_URL)
+                return
+            self.open_when_ready = True
+            self.tray.showMessage("Elena is starting", "The browser will open when ready.")
 
         def shutdown(self) -> None:
             if self.stopping:
                 return
             self.stopping = True
             self.health_timer.stop()
+            self.hotkey_timer.stop()
+            if self.hotkey_registered:
+                ctypes.windll.user32.UnregisterHotKey(None, HOTKEY_ID)
             if self.process.state() != QProcess.ProcessState.NotRunning:
                 self.process.terminate()
                 if not self.process.waitForFinished(5000):
                     self.process.kill()
                     self.process.waitForFinished(1500)
-            self.window.allow_close = True
-            self.window.close()
+            cleanup_managed_containers()
             self.tray.hide()
             self.lock.unlock()
             self.application.quit()
@@ -181,9 +199,10 @@ def main() -> None:
     lock = QLockFile(str(data_dir / "desktop.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(
-            None, "Elena is already running", "Use the tray icon to open Elena."
-        )
+        if runtime_is_ready():
+            webbrowser.open_new_tab(RUNTIME_URL)
+        else:
+            QMessageBox.information(None, "Elena is already running", "Elena is starting.")
         raise SystemExit(0)
 
     host = DesktopHost(application, lock)

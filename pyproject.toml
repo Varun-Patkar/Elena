@@ -10,16 +10,25 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.116,<1",
+    "httpx>=0.28,<1",
+    "keyring>=25.6,<26",
     "pydantic>=2.11,<3",
     "uvicorn[standard]>=0.35,<1",
 ]
 
 [project.optional-dependencies]
+providers = [
+    "agent-framework-github-copilot>=1.0.2,<2",
+]
+voice = [
+    "faster-whisper>=1.2,<2",
+    "kokoro>=0.9.4,<1",
+    "soundfile>=0.13,<1",
+]
 desktop = [
     "PySide6>=6.8,<7",
 ]
 dev = [
-    "httpx>=0.28,<1",
     "pytest>=8.4,<9",
     "pytest-asyncio>=1.1,<2",
     "ruff>=0.12,<1",
@@ -27,7 +36,9 @@ dev = [
 
 [project.scripts]
 elena-desktop = "elena.desktop:main"
+elena-discover-models = "elena.model_discovery:main"
 elena-runtime = "elena.runtime:main"
+elena-voice-setup = "elena.voice:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/elena"]

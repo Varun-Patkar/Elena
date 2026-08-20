@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from elena.contracts import Conversation, Message, Role, TaskState, TurnResponse
-from elena.providers import ChatProvider
+from elena.providers import ProviderRegistry
 from elena.storage import ConversationStore
 
 
@@ -10,13 +10,14 @@ class ConversationNotFoundError(LookupError):
 
 
 class ConversationService:
-    def __init__(self, store: ConversationStore, provider: ChatProvider) -> None:
+    def __init__(self, store: ConversationStore, providers: ProviderRegistry) -> None:
         self.store = store
-        self.provider = provider
+        self.providers = providers
 
-    def create_conversation(self, title: str) -> Conversation:
+    def create_conversation(self, title: str, provider: str) -> Conversation:
+        self.providers.resolve(provider)
         return self.store.create_conversation(
-            Conversation(title=title, provider=self.provider.name)
+            Conversation(title=title, provider=provider)
         )
 
     def get_conversation(self, conversation_id: UUID) -> Conversation:
@@ -37,7 +38,8 @@ class ConversationService:
 
         try:
             current = self.get_conversation(conversation_id)
-            chunks = [chunk async for chunk in self.provider.stream(current.messages)]
+            provider = self.providers.resolve(current.provider)
+            chunks = [chunk async for chunk in provider.stream(current.messages)]
             reply = Message(
                 conversation_id=conversation_id,
                 role=Role.ASSISTANT,

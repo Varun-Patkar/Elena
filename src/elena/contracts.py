@@ -49,7 +49,7 @@ class Conversation(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     title: str = Field(default="New conversation", min_length=1, max_length=120)
-    provider: str = "fake"
+    provider: str = "selected"
 
 
 class SendMessageRequest(BaseModel):

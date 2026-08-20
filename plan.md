@@ -17,7 +17,7 @@ Build Elena as a Windows-first, local personal agent with a small immutable Pyth
 ### Chosen Stack
 
 - Python 3.12, `uv`, Pydantic v2, asyncio, FastAPI, Uvicorn, HTTPX, SQLAlchemy/Alembic, SQLite WAL/FTS5, structlog, APScheduler, pytest, Ruff, Pyright.
-- PySide6 desktop host with `QSystemTrayIcon` and `QWebEngineView`; React + TypeScript + Vite frontend with a restrained, work-focused design and an attractive 2D face driven by Web Audio amplitude.
+- PySide6 tray host that opens the React UI in the default browser; React + TypeScript + Vite frontend with a restrained, work-focused design and an attractive 2D face driven by Web Audio amplitude.
 - Deterministic fake model, TTS, STT, browser, and clock adapters for work-laptop development and CI.
 - LM Studio through its OpenAI-compatible local endpoint as the first real model provider at home. A provider is selected when a conversation starts and remains pinned for that conversation and its subagents.
 - Kokoro `af_heart` TTS and faster-whisper STT as optional, lazy-loaded home-PC adapters. Text chat remains fully usable when either is unavailable.
@@ -35,7 +35,7 @@ Build Elena as a Windows-first, local personal agent with a small immutable Pyth
 
 ### Planned Repository
 
-- `apps/desktop/` - PySide6 host, tray, embedded web view, lifecycle supervision, packaging entry point.
+- `src/elena/desktop.py` - PySide6 tray host, browser launch, global hotkey, lifecycle supervision, packaging entry point.
 - `apps/ui/` - React/TypeScript UI, chat, face, activity drawers, approvals, tasks/subagents, memory/skills/settings views.
 - `src/elena/harness/` - immutable orchestrator, state machine, policy engine, context builder, approval service, scheduler, checkpoints, event contracts.
 - `src/elena/providers/` - fake provider and LM Studio adapter; optional provider SPI and a non-blocking Copilot feasibility spike.
@@ -106,8 +106,8 @@ Build Elena as a Windows-first, local personal agent with a small immutable Pyth
 
 ### Phase 7: Desktop, Voice, And Face
 
-32. Finish the PySide6 desktop shell: first-run setup, workspace picker, tray status, open/new conversation, active tasks, pause, restart runtime, diagnostics, and exit completely. Do not register Windows auto-start until explicitly enabled.
-33. Add provider setup and health UX. Fake provider is always available; LM Studio setup discovers/configures endpoint and model at home, tests streaming and structured tool calls, and pins the selected provider/model/config snapshot to each new conversation.
+32. Finish the PySide6 tray shell: first-run setup in the browser UI, two-action tray menu, `Ctrl+F4` open hotkey, runtime supervision, labeled-container cleanup, and complete exit. Do not register Windows auto-start until explicitly enabled.
+33. Add provider setup and health UX. LM Studio setup discovers local or remote endpoints and models; GitHub Copilot uses the official Microsoft Agent Framework connector and Copilot SDK. Both test model discovery before confirmation and pin the selection to each new conversation.
 34. Add the Kokoro adapter with `af_heart`, lazy model loading, sentence-sized synthesis, cancellation, bounded cache, and a projection that speaks only top-level Elena text. Add faster-whisper push-to-talk/batched transcription with editable transcript before submission.
 35. Drive the 2D face from actual audio amplitude and explicit listening/thinking/speaking/error states. Keep stable dimensions, accessible reduced-motion behavior, keyboard operation, readable activity drawers, and no technical log narration through TTS.
 36. Test microphone denial, missing models, CPU-only inference, audio device changes, interrupted playback, voice cancellation, and text-only degradation without blocking the conversation runtime.
@@ -157,7 +157,7 @@ Build Elena as a Windows-first, local personal agent with a small immutable Pyth
 - Chosen repository visibility: public. All personal state and secrets live outside the repository and are ignored/redacted by default.
 - V1 is breadth-first but capability-gated. Every major concept has a working path; dangerous autonomy remains approval-bound and reversible.
 - LM Studio is the primary real provider and is integrated/tested at home. The work laptop and CI use deterministic fakes.
-- GitHub Copilot is a separate feasibility spike, not a promised generic LLM endpoint and not a V1 blocker.
+- GitHub Copilot is a supported V1 provider through `agent-framework-github-copilot`; its provider-owned shell, file, URL, and MCP capabilities remain denied so Elena's harness and Docker policy stay authoritative.
 - Provider selection is conversation-scoped and pinned; subagents inherit it unless a future explicit cross-provider policy is approved.
 - SQLite is the authoritative local store. FTS5, relational graph edges, and optional local embeddings avoid premature standalone database services.
 - Raw conversations are append-only ground truth in V1. Maintenance compacts derived working representations, not source history.
