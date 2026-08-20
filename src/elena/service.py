@@ -26,7 +26,7 @@ class ConversationService:
         return conversation
 
     async def send_message(self, conversation_id: UUID, content: str) -> TurnResponse:
-        conversation = self.get_conversation(conversation_id)
+        self.get_conversation(conversation_id)
         user_message = Message(
             conversation_id=conversation_id,
             role=Role.USER,

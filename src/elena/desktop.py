@@ -5,7 +5,6 @@ from pathlib import Path
 
 from elena.runtime import default_data_dir
 
-
 RUNTIME_URL = "http://127.0.0.1:8765"
 
 
@@ -15,7 +14,9 @@ def runtime_command() -> tuple[str, list[str]]:
 
 def runtime_is_ready(timeout: float = 0.3) -> bool:
     try:
-        with urllib.request.urlopen(f"{RUNTIME_URL}/health", timeout=timeout) as response:
+        with urllib.request.urlopen(
+            f"{RUNTIME_URL}/health", timeout=timeout
+        ) as response:
             return response.status == 200
     except (OSError, urllib.error.URLError):
         return False
@@ -25,8 +26,14 @@ def main() -> None:
     try:
         from PySide6.QtCore import QLockFile, QProcess, QTimer, QUrl
         from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
-        from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon
         from PySide6.QtWebEngineWidgets import QWebEngineView
+        from PySide6.QtWidgets import (
+            QApplication,
+            QMainWindow,
+            QMenu,
+            QMessageBox,
+            QSystemTrayIcon,
+        )
     except ImportError as error:
         raise SystemExit(
             "The desktop shell is optional. Install it with: uv sync --extra desktop"
@@ -174,7 +181,9 @@ def main() -> None:
     lock = QLockFile(str(data_dir / "desktop.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, "Elena is already running", "Use the tray icon to open Elena.")
+        QMessageBox.information(
+            None, "Elena is already running", "Use the tray icon to open Elena."
+        )
         raise SystemExit(0)
 
     host = DesktopHost(application, lock)
