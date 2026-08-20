@@ -1,0 +1,87 @@
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/fraunces";
+
+:root {
+	--ink: #24302f;
+	--paper: #fff9f2;
+	--line: #eaded2;
+	--line-strong: #d5c3b4;
+	--muted: #746c68;
+	--muted-on-dark: #c1c5bd;
+	--coral: #e27662;
+	--coral-dark: #ad5142;
+	--coral-soft: #ffc1ad;
+	--sage: #76a487;
+	--sage-soft: #c5e0cb;
+	--skin: #e5a98f;
+	--plum: #553f4a;
+	--radius-small: 12px;
+	--radius-medium: 18px;
+	--radius-large: 28px;
+	--sans: "Nunito Variable", "Segoe UI", sans-serif;
+	--display: "Fraunces Variable", Georgia, serif;
+	--mono: "Cascadia Mono", Consolas, monospace;
+	font: 15px/1.5 var(--sans);
+	font-weight: 480;
+	letter-spacing: 0;
+	color: var(--ink);
+	background-color: #f3d8ca;
+	background-image:
+		linear-gradient(90deg, rgba(255, 255, 255, 0.2) 50%, transparent 50%),
+		linear-gradient(rgba(118, 164, 135, 0.08) 1px, transparent 1px);
+	background-size:
+		32px 32px,
+		100% 32px;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+	min-height: calc(100svh - 24px);
+}
+
+body {
+	margin: 0;
+	padding: 12px;
+	min-width: 320px;
+	min-height: 100svh;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+button,
+textarea {
+	letter-spacing: 0;
+}
+button {
+	cursor: pointer;
+}
+button:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+	outline: 2px solid var(--coral);
+	outline-offset: 3px;
+}
+h1,
+h2 {
+	font-family: var(--display);
+	font-variation-settings:
+		"SOFT" 80,
+		"WONK" 1;
+	letter-spacing: 0;
+}
+
+@media (max-width: 760px) {
+	body {
+		padding: 0;
+	}
+
+	#root {
+		min-height: 100svh;
+	}
+}

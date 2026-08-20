@@ -1,0 +1,30 @@
+.venv/
+.vscode/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Frontend output and dependencies
+node_modules/
+apps/ui/dist/
+
+# Personal source material and runtime state
+conv.txt
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.wav
+*.mp3
+.env
+.env.*
+!.env.example
+runtime-data/
+workspace/
